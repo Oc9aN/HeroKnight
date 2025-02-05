@@ -15,7 +15,7 @@ public class PlayerSettings
     public static readonly float PLAYER_GRAVITY_SLOW = 0.5f;
     public static readonly float PLAYER_GRAVITY_DEFAULT = 2.0f;
 }
-public class CharacterController : MonoBehaviour
+public class CharacterController : MonoBehaviour, ITarget
 {
     // 수치 조절
     [Header("스텟")]
@@ -38,20 +38,6 @@ public class CharacterController : MonoBehaviour
     private Rigidbody2D rb;
     private Animator animator;
     private Vector2 currnetDirection = Vector2.right;   // 현재 캐릭터 방향
-    private Vector2 CurrnetDirection
-    {
-        set
-        {
-            if (!Utils.VectorsApproximatelyEqual(currnetDirection, value))
-            {
-                // 방향 전환
-                Vector3 newScale = animator.transform.localScale;
-                newScale.x = -newScale.x;
-                animator.transform.localScale = newScale;
-            }
-            currnetDirection = value;
-        }
-    }
     private Coroutine RollCoroutine;
 
     // 제어 변수
@@ -122,7 +108,14 @@ public class CharacterController : MonoBehaviour
 
         animator.SetBool("Run", true);
         rb.velocity = new Vector2(direction.x * moveSpeed, rb.velocity.y);
-        CurrnetDirection = direction;
+        if (!Utils.VectorsApproximatelyEqual(currnetDirection, direction))
+        {
+            // 방향 전환
+            Vector3 newScale = transform.localScale;
+            newScale.x = -newScale.x;
+            transform.localScale = newScale;
+            currnetDirection = direction;
+        }
     }
 
     public void Jump()
@@ -206,5 +199,16 @@ public class CharacterController : MonoBehaviour
     public void GravityDefault()
     {
         rb.gravityScale = PlayerSettings.PLAYER_GRAVITY_DEFAULT;
+    }
+
+    public void Damaged(int damage)
+    {
+        Debug.Log($"으악 데미지 {damage}만큼 받았다!");
+    }
+
+    public float Distance(Vector3 from)
+    {
+        Vector3 distance = transform.position - from;
+        return distance.x;
     }
 }
