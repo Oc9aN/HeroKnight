@@ -230,7 +230,7 @@ GameObject:
   - component: {fileID: 2773380615966044363}
   - component: {fileID: 2773380615966044361}
   - component: {fileID: 2773380615966044362}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: HeroKnight
   m_TagString: Player
   m_Icon: {fileID: 0}

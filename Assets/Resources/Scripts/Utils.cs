@@ -11,4 +11,9 @@ public static class Utils
                Mathf.Approximately(a.y, b.y) &&
                Mathf.Approximately(a.z, b.z);
     }
+
+    public static bool FloatSignEqual(float a, float b)
+    {
+        return Mathf.Sign(a) == Mathf.Sign(b);
+    }
 }
