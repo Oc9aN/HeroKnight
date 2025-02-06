@@ -5,15 +5,6 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(BoxCollider2D))]
 [RequireComponent(typeof(Animator))]
-public class PlayerSettings
-{
-    public static readonly float PLAYER_SPEED_DEFAULT = 3.0f;
-    public static readonly float PLAYER_SPEED_SLOW = 1.0f;
-    public static readonly float PLAYER_HITBOX_DEFAULT = 1.3f;
-    public static readonly float PLAYER_HITBOX_SMALL = 1.0f;
-    public static readonly float PLAYER_GRAVITY_SLOW = 0.5f;
-    public static readonly float PLAYER_GRAVITY_DEFAULT = 2.0f;
-}
 public class CharacterController : MonoBehaviour, ITarget
 {
     // 수치 조절
@@ -41,17 +32,7 @@ public class CharacterController : MonoBehaviour, ITarget
     // 변수
     private Rigidbody2D rb;
     private Animator animator;
-    private Vector2 currnetDirection = Vector2.right;   // 현재 캐릭터 방향
     private Coroutine RollCoroutine;
-
-    // 제어 변수
-    private int attackCount = 0;    // 현재 공격 단계
-    private float attackTimer = 0f;
-    private float moveSpeed { get { return animator.GetFloat("MoveSpeed"); } }
-    private bool rolling { get { return animator.GetBool("Rolling"); } }
-    private bool block { get { return animator.GetBool("Blocking"); } }
-    private bool parrying { get { return animator.GetBool("Parrying"); } }
-    private bool grabbing { get { return animator.GetBool("WallGrabbing"); } }
 
     public void Init(CharacterView view)
     {
@@ -64,14 +45,20 @@ public class CharacterController : MonoBehaviour, ITarget
         characterView.maxHealth = maxHealth;
 
         // 캐릭터 모델 생성
-        characterModel = new CharacterModel(maxHealth);
+        characterModel = new CharacterModel(maxHealth, FullCombo, ComboThreshold);
         characterModel.HealthChanged += characterView.OnHealthChanged;
+        characterModel.StartRolling += () =>
+        {
+            if (RollCoroutine != null)
+                StopCoroutine(RollCoroutine);
+            RollCoroutine = StartCoroutine(RollUpdate());   // 코루틴으로 구르기 시작
+        };
 
         // 기본 이동 속도 셋팅
-        animator.SetFloat("MoveSpeed", PlayerSettings.PLAYER_SPEED_DEFAULT);
+        characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_DEFAULT;
 
         // 센서 이벤트 등록
-        groundSensor.TriggerEnterAction += () => animator.SetBool("WallGrabbing", false);
+        groundSensor.TriggerEnterAction += () => characterModel.Grabbing = false;
         groundSensor.TriggerEnterAction += () => animator.SetBool("Ground", true);
         groundSensor.TriggerExitAction += () => animator.SetBool("Ground", false);
     }
@@ -82,13 +69,13 @@ public class CharacterController : MonoBehaviour, ITarget
         animator.SetFloat("YVelocity", rb.velocity.y);
 
         // 공격 시간 체크
-        attackTimer += Time.deltaTime;
+        characterModel.AttackTimer += Time.deltaTime;
 
         // 벽 모서리 감지한 경우 벽에 매달림
-        if (!grabbing && gripSensor.IsCollided && !gripEmptySensor.IsCollided)
+        if (!characterModel.Grabbing && gripSensor.IsCollided && !gripEmptySensor.IsCollided)
         {
             Debug.Log("그랩");
-            animator.SetBool("WallGrabbing", true);
+            characterModel.Grabbing = true;
             animator.SetTrigger("WallGrab");
             rb.constraints = RigidbodyConstraints2D.FreezePositionY | RigidbodyConstraints2D.FreezeRotation;
         }
@@ -103,8 +90,8 @@ public class CharacterController : MonoBehaviour, ITarget
     /// <returns>false: 동작 수행 불가, true: 동작 수행 가능</returns>
     public bool ActionPreTest()
     {
-        if (rolling || parrying) return false;
-        if (block) BlockOff();
+        if (characterModel.Rolling || characterModel.Parrying) return false;
+        if (characterModel.Blocking) BlockOff();
         return true;
     }
 
@@ -119,23 +106,23 @@ public class CharacterController : MonoBehaviour, ITarget
         if (!ActionPreTest())
             return;
 
-        if (grabbing && direction != currnetDirection) GrabOff(); // 그랩중 반대 누르면 떨어짐
+        if (characterModel.Grabbing && direction != characterModel.CurrnetDirection) GrabOff(); // 그랩중 반대 누르면 떨어짐
 
         animator.SetBool("Run", true);
-        rb.velocity = new Vector2(direction.x * moveSpeed, rb.velocity.y);
-        if (!Utils.VectorsApproximatelyEqual(currnetDirection, direction))
+        rb.velocity = new Vector2(direction.x * characterModel.MoveSpeed, rb.velocity.y);
+        if (!Utils.VectorsApproximatelyEqual(characterModel.CurrnetDirection, direction))
         {
             // 방향 전환
             Vector3 newScale = transform.localScale;
             newScale.x = -newScale.x;
             transform.localScale = newScale;
-            currnetDirection = direction;
+            characterModel.CurrnetDirection = direction;
         }
     }
 
     public void Jump()
     {
-        if (!ActionPreTest() || animator.GetBool("Jump") || (!grabbing && !groundSensor.IsCollided)) // 그랩중 또는 땅에 있는 경우 점프 가능
+        if (!ActionPreTest() || animator.GetBool("Jump") || (!characterModel.Grabbing && !groundSensor.IsCollided)) // 그랩중 또는 땅에 있는 경우 점프 가능
             return;
 
         rb.constraints = RigidbodyConstraints2D.FreezeRotation;
@@ -145,36 +132,32 @@ public class CharacterController : MonoBehaviour, ITarget
 
     public void Attack()
     {
-        if (!ActionPreTest() || attackTimer < AttackDelay || !groundSensor.IsCollided || grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
+        if (!ActionPreTest() || characterModel.AttackTimer < AttackDelay || !groundSensor.IsCollided || characterModel.Grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
             return;
 
-        attackCount++;
+        characterModel.AttackCount++;
 
-        if (attackCount > FullCombo || attackTimer > ComboThreshold)
-        {
-            attackCount = 1;
-        }
+        animator.SetTrigger("Attack" + characterModel.AttackCount);
 
-        animator.SetTrigger("Attack" + attackCount);
-        animator.SetFloat("MoveSpeed", PlayerSettings.PLAYER_SPEED_SLOW);
-
-        attackTimer = 0.0f;
+        characterModel.AttackTimer = 0.0f;
     }
 
     public void BlockOn()
     {
-        if (!ActionPreTest() || !groundSensor.IsCollided || grabbing)
+        if (!ActionPreTest() || !groundSensor.IsCollided || characterModel.Grabbing)
             return;
 
         rb.velocity = Vector2.zero;
-        animator.SetBool("Parrying", true);
+        characterModel.Parrying = true;
         animator.SetTrigger("Parry");       // 패링 애니메이션
-        animator.SetBool("Blocking", true); // IdelBlock제어
+        characterModel.Blocking = true;
+        animator.SetBool("Blocking", characterModel.Blocking); // IdelBlock제어
     }
 
     public void BlockOff()
     {
-        animator.SetBool("Blocking", false); // IdelBlock제어
+        characterModel.Blocking = false;
+        animator.SetBool("Blocking", characterModel.Blocking); // IdelBlock제어
     }
 
     public void Roll()
@@ -183,17 +166,14 @@ public class CharacterController : MonoBehaviour, ITarget
             return;
 
         animator.SetTrigger("Roll");
-        animator.SetBool("Rolling", true);
-        if (RollCoroutine != null)
-            StopCoroutine(RollCoroutine);
-        RollCoroutine = StartCoroutine(RollUpdate());   // 코루틴으로 구르기 시작
+        characterModel.Rolling = true;
     }
 
     public IEnumerator RollUpdate()
     {
-        while (rolling) // 애니메이션이 끝날때까지
+        while (characterModel.Rolling) // 애니메이션이 끝날때까지
         {
-            rb.velocity = new Vector2(currnetDirection.x * rollSpeed, rb.velocity.y);
+            rb.velocity = new Vector2(characterModel.CurrnetDirection.x * rollSpeed, rb.velocity.y);
             yield return null;
         }
         yield break;
@@ -201,7 +181,7 @@ public class CharacterController : MonoBehaviour, ITarget
 
     public void GrabOff()
     {
-        rb.AddForce(-currnetDirection * 0.5f, ForceMode2D.Impulse);
+        rb.AddForce(-characterModel.CurrnetDirection * 0.5f, ForceMode2D.Impulse);
         rb.constraints = RigidbodyConstraints2D.FreezeRotation;
     }
 
@@ -227,4 +207,10 @@ public class CharacterController : MonoBehaviour, ITarget
         Vector3 distance = transform.position - from;
         return distance.x;
     }
+
+    // 애니메이션 이벤트
+    private void AE_SetMoveSpeedDefault() => characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_DEFAULT;
+    private void AE_SetMoveSpeedSlow() => characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_SLOW;
+    private void AE_SetRollingEnd() => characterModel.Rolling = false;
+    private void AE_SetParryingEnd() => characterModel.Parrying = false;
 }
