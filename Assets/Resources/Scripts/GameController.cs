@@ -5,8 +5,11 @@ using UnityEngine.Events;
 
 public class GameController : MonoBehaviour
 {
+    [Header("캐릭터")]
     public Transform spawnPoint;
     public CharacterController characterControllerObj;
+    public CharacterView characterView;
+    [Header("보스")]
     public Transform bossSpawnPoint;
     public BossController bossControllerObj;
 
@@ -14,6 +17,7 @@ public class GameController : MonoBehaviour
     private void Awake()
     {
         CharacterController characterController = Instantiate(characterControllerObj, spawnPoint.position, Quaternion.identity);
+        characterController.Init(characterView);
         inputHandler = new InputHandler(characterController);
 
         BossController bossController = Instantiate(bossControllerObj, bossSpawnPoint.position, Quaternion.identity);

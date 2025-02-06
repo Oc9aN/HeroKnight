@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using DG.Tweening;
 using UnityEngine;
 
 public interface INode
@@ -167,6 +166,7 @@ public class BossController : MonoBehaviour
         if (!attacking && percent < skillChance)
         {
             Debug.Log("보스 스킬 발동");
+            animator.SetBool("Move", false);
             animator.SetTrigger("Cast");
             SkillOn();
             attacking = true;
@@ -183,6 +183,7 @@ public class BossController : MonoBehaviour
         {
             // 가까우면 바로 공격
             Debug.Log("보스 공격!!");
+            animator.SetBool("Move", false);
             animator.SetTrigger("Attack");
             attacking = true;
             attackCoolTime = 0f;

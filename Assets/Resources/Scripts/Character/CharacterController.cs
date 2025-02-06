@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Events;
 
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(BoxCollider2D))]
@@ -19,6 +18,7 @@ public class CharacterController : MonoBehaviour, ITarget
 {
     // 수치 조절
     [Header("스텟")]
+    [SerializeField] int maxHealth = 100;
     [SerializeField] float jumpForce = 5f;
     [SerializeField] float rollSpeed = 8f;
     [SerializeField] int FullCombo = 3;
@@ -33,6 +33,10 @@ public class CharacterController : MonoBehaviour, ITarget
     [SerializeField] Sensor gripSensor;
     [SerializeField] Sensor gripEmptySensor;
     [SerializeField] Sensor wallSensor;
+
+    // MVC
+    private CharacterView characterView;
+    private CharacterModel characterModel;
 
     // 변수
     private Rigidbody2D rb;
@@ -49,13 +53,24 @@ public class CharacterController : MonoBehaviour, ITarget
     private bool parrying { get { return animator.GetBool("Parrying"); } }
     private bool grabbing { get { return animator.GetBool("WallGrabbing"); } }
 
-    private void Start()
+    public void Init(CharacterView view)
     {
+        // GetComponent
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
 
+        // 캐릭터 뷰 설정
+        characterView = view;
+        characterView.maxHealth = maxHealth;
+
+        // 캐릭터 모델 생성
+        characterModel = new CharacterModel(maxHealth);
+        characterModel.HealthChanged += characterView.OnHealthChanged;
+
+        // 기본 이동 속도 셋팅
         animator.SetFloat("MoveSpeed", PlayerSettings.PLAYER_SPEED_DEFAULT);
 
+        // 센서 이벤트 등록
         groundSensor.TriggerEnterAction += () => animator.SetBool("WallGrabbing", false);
         groundSensor.TriggerEnterAction += () => animator.SetBool("Ground", true);
         groundSensor.TriggerExitAction += () => animator.SetBool("Ground", false);
@@ -203,6 +218,7 @@ public class CharacterController : MonoBehaviour, ITarget
 
     public void Damaged(int damage)
     {
+        characterModel.Health -= damage;
         Debug.Log($"으악 데미지 {damage}만큼 받았다!");
     }
 

@@ -150,7 +150,7 @@ MonoBehaviour:
   traceDistance: 3
   defaultDamage: 5
   skillDamage: 10
-  skillChance: 30
+  skillChance: 100
   attackCoolTimeMin: 3
   attackCoolTimeMax: 5
   skill: {fileID: 1885266054311726191, guid: 5df29bd13828ff044af02ff8b0afc8dd, type: 3}
