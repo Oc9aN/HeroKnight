@@ -387,11 +387,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f93fdfdcd0f68542a5206affaf3e42f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  maxHealth: 100
   jumpForce: 9
   rollSpeed: 8
-  FullCombo: 3
-  ComboThreshold: 1
-  AttackDelay: 0.4
+  fullCombo: 3
+  comboThreshold: 1
+  attackDelay: 0.25
+  comboDamages: 030000000400000005000000
+  attackDistance: 1.8
   groundSensor: {fileID: 2773380615725355021}
   gripSensor: {fileID: 2773380616151007660}
   gripEmptySensor: {fileID: 2773380615372175912}

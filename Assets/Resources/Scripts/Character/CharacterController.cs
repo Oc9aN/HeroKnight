@@ -12,11 +12,13 @@ public class CharacterController : MonoBehaviour, ITarget
     [SerializeField] int maxHealth = 100;
     [SerializeField] float jumpForce = 5f;
     [SerializeField] float rollSpeed = 8f;
-    [SerializeField] int FullCombo = 3;
+    [SerializeField] int fullCombo = 3;
     [Tooltip("콤보가 이어지는 시간")]
-    [SerializeField] float ComboThreshold = 1.0f;
+    [SerializeField] float comboThreshold = 1.0f;
     [Tooltip("다음 공격까지 대기 시간")]
-    [SerializeField] float AttackDelay = 0.25f;
+    [SerializeField] float attackDelay = 0.25f;
+    [SerializeField] int[] comboDamages;
+    [SerializeField] float attackDistance = 3f;
 
     // 센서
     [Header("센서")]
@@ -42,10 +44,10 @@ public class CharacterController : MonoBehaviour, ITarget
 
         // 캐릭터 뷰 설정
         characterView = view;
-        characterView.maxHealth = maxHealth;
+        characterView.SetMaxHealth(maxHealth);
 
         // 캐릭터 모델 생성
-        characterModel = new CharacterModel(maxHealth, FullCombo, ComboThreshold);
+        characterModel = new CharacterModel(maxHealth, fullCombo, comboThreshold);
         characterModel.HealthChanged += characterView.OnHealthChanged;
         characterModel.StartRolling += () =>
         {
@@ -132,7 +134,7 @@ public class CharacterController : MonoBehaviour, ITarget
 
     public void Attack()
     {
-        if (!ActionPreTest() || characterModel.AttackTimer < AttackDelay || !groundSensor.IsCollided || characterModel.Grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
+        if (!ActionPreTest() || characterModel.AttackTimer < attackDelay || !groundSensor.IsCollided || characterModel.Grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
             return;
 
         characterModel.AttackCount++;
@@ -176,6 +178,7 @@ public class CharacterController : MonoBehaviour, ITarget
             rb.velocity = new Vector2(characterModel.CurrnetDirection.x * rollSpeed, rb.velocity.y);
             yield return null;
         }
+        characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_DEFAULT;
         yield break;
     }
 
@@ -199,6 +202,8 @@ public class CharacterController : MonoBehaviour, ITarget
     public void Damaged(int damage)
     {
         characterModel.Health -= damage;
+        if (!characterModel.Rolling && !characterModel.Blocking && !characterModel.Grabbing && !characterModel.Parrying)
+            animator.SetTrigger("Hurt");
         Debug.Log($"으악 데미지 {damage}만큼 받았다!");
     }
 
@@ -213,4 +218,15 @@ public class CharacterController : MonoBehaviour, ITarget
     private void AE_SetMoveSpeedSlow() => characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_SLOW;
     private void AE_SetRollingEnd() => characterModel.Rolling = false;
     private void AE_SetParryingEnd() => characterModel.Parrying = false;
+    private void AE_Attack(int combo)
+    {
+        Vector2 rayPosition = (Vector2)transform.position + Vector2.up;
+        Debug.DrawRay(rayPosition, characterModel.CurrnetDirection * attackDistance, Color.red, 3f);
+        int layerMask = 1 << LayerMask.NameToLayer("Enemy");
+        RaycastHit2D hit = Physics2D.Raycast(rayPosition, characterModel.CurrnetDirection, attackDistance, layerMask);
+        if (hit.collider != null)
+        {
+            hit.collider.GetComponent<ITarget>().Damaged(comboDamages[combo]);
+        }
+    }
 }

@@ -78,15 +78,8 @@ AnimationClip:
   m_HasGenericRootTransform: 0
   m_HasMotionFloatCurves: 0
   m_Events:
-  - time: 0
-    functionName: AE_SetParrying
-    data: 
-    objectReferenceParameter: {fileID: 0}
-    floatParameter: 0
-    intParameter: 1
-    messageOptions: 0
   - time: 0.41666666
-    functionName: AE_SetParrying
+    functionName: AE_SetParryingEnd
     data: 
     objectReferenceParameter: {fileID: 0}
     floatParameter: 0

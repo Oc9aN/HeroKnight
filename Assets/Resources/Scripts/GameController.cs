@@ -6,12 +6,13 @@ using UnityEngine.Events;
 public class GameController : MonoBehaviour
 {
     [Header("캐릭터")]
-    public Transform spawnPoint;
-    public CharacterController characterControllerObj;
-    public CharacterView characterView;
+    [SerializeField] Transform spawnPoint;
+    [SerializeField] CharacterController characterControllerObj;
+    [SerializeField] CharacterView characterView;
     [Header("보스")]
-    public Transform bossSpawnPoint;
-    public BossController bossControllerObj;
+    [SerializeField] Transform bossSpawnPoint;
+    [SerializeField] BossController bossControllerObj;
+    [SerializeField] BossView bossView;
 
     private InputHandler inputHandler;
     private void Awake()
@@ -21,6 +22,7 @@ public class GameController : MonoBehaviour
         inputHandler = new InputHandler(characterController);
 
         BossController bossController = Instantiate(bossControllerObj, bossSpawnPoint.position, Quaternion.identity);
+        bossController.Init(bossView);
         bossController.SetTarget(characterController);
     }
     private void Update()
