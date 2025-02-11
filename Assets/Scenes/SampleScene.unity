@@ -795,10 +795,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnPoint: {fileID: 2047659211}
-  characterControllerObj: {fileID: 2773380615966044362, guid: 66e4cbb15fab9bd4995498ba7bc9edfa, type: 3}
   characterView: {fileID: 1738421415}
   bossSpawnPoint: {fileID: 1471422087}
-  bossControllerObj: {fileID: 5330430399284037991, guid: d843c9f63919b5c479f7a3ac3f3b02ee, type: 3}
   bossView: {fileID: 406649112}
 --- !u!4 &961720418
 Transform:

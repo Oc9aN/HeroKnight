@@ -1,31 +1,22 @@
 using System.Collections;
 using System.Collections.Generic;
+using Photon.Pun;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(BoxCollider2D))]
 [RequireComponent(typeof(Animator))]
-public class CharacterController : MonoBehaviour, ITarget
+public class CharacterController : MonoBehaviourPunCallbacks, ITarget
 {
-    // 수치 조절
-    [Header("스텟")]
-    [SerializeField] int maxHealth = 100;
-    [SerializeField] float jumpForce = 5f;
-    [SerializeField] float rollSpeed = 8f;
-    [SerializeField] int fullCombo = 3;
-    [Tooltip("콤보가 이어지는 시간")]
-    [SerializeField] float comboThreshold = 1.0f;
-    [Tooltip("다음 공격까지 대기 시간")]
-    [SerializeField] float attackDelay = 0.25f;
-    [SerializeField] int[] comboDamages;
-    [SerializeField] float attackDistance = 3f;
-
     // 센서
     [Header("센서")]
     [SerializeField] Sensor groundSensor;
-    [SerializeField] Sensor gripSensor;
-    [SerializeField] Sensor gripEmptySensor;
-    [SerializeField] Sensor wallSensor;
+    [SerializeField] Sensor gripSensorR;
+    [SerializeField] Sensor gripEmptySensorR;
+    [SerializeField] Sensor wallSensorR;
+    [SerializeField] Sensor gripSensorL;
+    [SerializeField] Sensor gripEmptySensorL;
+    [SerializeField] Sensor wallSensorL;
 
     // MVC
     private CharacterView characterView;
@@ -35,25 +26,36 @@ public class CharacterController : MonoBehaviour, ITarget
     private Rigidbody2D rb;
     private Animator animator;
     private Coroutine RollCoroutine;
+    private PhotonView PV;
+    private SpriteRenderer spriteRenderer;
 
-    public void Init(CharacterView view)
+    private void Awake()
     {
         // GetComponent
+        PV = GetComponent<PhotonView>();
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        characterModel = GetComponent<CharacterModel>();
 
-        // 캐릭터 뷰 설정
-        characterView = view;
-        characterView.SetMaxHealth(maxHealth);
-
-        // 캐릭터 모델 생성
-        characterModel = new CharacterModel(maxHealth, fullCombo, comboThreshold);
-        characterModel.HealthChanged += characterView.OnHealthChanged;
-        characterModel.StartRolling += () =>
+        // 캐릭터 모델 이벤트 등록
+        characterModel.RollingEvent += () =>
         {
-            if (RollCoroutine != null)
-                StopCoroutine(RollCoroutine);
-            RollCoroutine = StartCoroutine(RollUpdate());   // 코루틴으로 구르기 시작
+            if (characterModel.Rolling)
+            {
+                if (RollCoroutine != null)
+                    StopCoroutine(RollCoroutine);
+                RollCoroutine = StartCoroutine(RollUpdate());   // 코루틴으로 구르기 시작
+            }
+        };
+        characterModel.GrabbingChangeEvent += (bool isGrab) =>
+        {
+            if (isGrab)
+            {
+                Debug.Log("그랩");
+                PV.RPC("RpcSetTrigger", RpcTarget.All, "WallGrab");
+                PV.RPC("RpcSetYFreeze", RpcTarget.AllBuffered, true);
+            }
         };
 
         // 기본 이동 속도 셋팅
@@ -65,8 +67,23 @@ public class CharacterController : MonoBehaviour, ITarget
         groundSensor.TriggerExitAction += () => animator.SetBool("Ground", false);
     }
 
+    public void Init(CharacterView view)
+    {
+        if (!PV.IsMine)
+            return;
+
+        // 캐릭터 뷰 설정
+        characterView = view;
+        characterView.SetMaxHealth(characterModel.MaxHelath);
+
+        // 캐릭터 모델 뷰 관련 이벤트 등록
+        characterModel.HealthChanged += characterView.OnHealthChanged;
+    }
+
     private void Update()
     {
+        if (!PV.IsMine)
+            return;
         // YVelocity 체크
         animator.SetFloat("YVelocity", rb.velocity.y);
 
@@ -74,16 +91,13 @@ public class CharacterController : MonoBehaviour, ITarget
         characterModel.AttackTimer += Time.deltaTime;
 
         // 벽 모서리 감지한 경우 벽에 매달림
-        if (!characterModel.Grabbing && gripSensor.IsCollided && !gripEmptySensor.IsCollided)
+        if (!characterModel.Grabbing && ((gripSensorR.IsCollided && !gripEmptySensorR.IsCollided) || (gripSensorL.IsCollided && !gripEmptySensorL.IsCollided)))
         {
-            Debug.Log("그랩");
             characterModel.Grabbing = true;
-            animator.SetTrigger("WallGrab");
-            rb.constraints = RigidbodyConstraints2D.FreezePositionY | RigidbodyConstraints2D.FreezeRotation;
         }
 
         // 두 센서 다 감지된 경우 슬라이딩
-        animator.SetBool("WallSlide", wallSensor.IsCollided && gripSensor.IsCollided);
+        animator.SetBool("WallSlide", (wallSensorR.IsCollided && gripSensorR.IsCollided) || (wallSensorL.IsCollided && gripSensorL.IsCollided));
     }
 
     /// <summary>
@@ -115,10 +129,7 @@ public class CharacterController : MonoBehaviour, ITarget
         if (!Utils.VectorsApproximatelyEqual(characterModel.CurrnetDirection, direction))
         {
             // 방향 전환
-            Vector3 newScale = transform.localScale;
-            newScale.x = -newScale.x;
-            transform.localScale = newScale;
-            characterModel.CurrnetDirection = direction;
+            PV.RPC("RpcFlipX", RpcTarget.AllBuffered, direction);
         }
     }
 
@@ -127,19 +138,19 @@ public class CharacterController : MonoBehaviour, ITarget
         if (!ActionPreTest() || animator.GetBool("Jump") || (!characterModel.Grabbing && !groundSensor.IsCollided)) // 그랩중 또는 땅에 있는 경우 점프 가능
             return;
 
-        rb.constraints = RigidbodyConstraints2D.FreezeRotation;
-        rb.AddForce(Vector3.up * jumpForce, ForceMode2D.Impulse);
-        animator.SetTrigger("Jump");
+        PV.RPC("RpcSetYFreeze", RpcTarget.AllBuffered, false);
+        rb.AddForce(Vector3.up * characterModel.JumpForce, ForceMode2D.Impulse);
+        PV.RPC("RpcSetTrigger", RpcTarget.All, "Jump");
     }
 
     public void Attack()
     {
-        if (!ActionPreTest() || characterModel.AttackTimer < attackDelay || !groundSensor.IsCollided || characterModel.Grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
+        if (!ActionPreTest() || characterModel.AttackTimer < characterModel.AttackDelay || !groundSensor.IsCollided || characterModel.Grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
             return;
 
         characterModel.AttackCount++;
 
-        animator.SetTrigger("Attack" + characterModel.AttackCount);
+        PV.RPC("RpcSetTrigger", RpcTarget.All, "Attack" + characterModel.AttackCount);
 
         characterModel.AttackTimer = 0.0f;
     }
@@ -151,7 +162,7 @@ public class CharacterController : MonoBehaviour, ITarget
 
         rb.velocity = Vector2.zero;
         characterModel.Parrying = true;
-        animator.SetTrigger("Parry");       // 패링 애니메이션
+        PV.RPC("RpcSetTrigger", RpcTarget.All, "Parry");      // 패링 애니메이션
         characterModel.Blocking = true;
         animator.SetBool("Blocking", characterModel.Blocking); // IdelBlock제어
     }
@@ -167,7 +178,7 @@ public class CharacterController : MonoBehaviour, ITarget
         if (!ActionPreTest() || !groundSensor.IsCollided)
             return;
 
-        animator.SetTrigger("Roll");
+        PV.RPC("RpcSetTrigger", RpcTarget.All, "Roll");
         characterModel.Rolling = true;
     }
 
@@ -175,7 +186,7 @@ public class CharacterController : MonoBehaviour, ITarget
     {
         while (characterModel.Rolling) // 애니메이션이 끝날때까지
         {
-            rb.velocity = new Vector2(characterModel.CurrnetDirection.x * rollSpeed, rb.velocity.y);
+            rb.velocity = new Vector2(characterModel.CurrnetDirection.x * characterModel.RollSpeed, rb.velocity.y);
             yield return null;
         }
         characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_DEFAULT;
@@ -185,7 +196,7 @@ public class CharacterController : MonoBehaviour, ITarget
     public void GrabOff()
     {
         rb.AddForce(-characterModel.CurrnetDirection * 0.5f, ForceMode2D.Impulse);
-        rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+        PV.RPC("RpcSetYFreeze", RpcTarget.AllBuffered, false);
     }
 
     // 낙하 속도 조절
@@ -203,7 +214,7 @@ public class CharacterController : MonoBehaviour, ITarget
     {
         characterModel.Health -= damage;
         if (!characterModel.Rolling && !characterModel.Blocking && !characterModel.Grabbing && !characterModel.Parrying)
-            animator.SetTrigger("Hurt");
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Hurt");
         Debug.Log($"으악 데미지 {damage}만큼 받았다!");
     }
 
@@ -211,6 +222,26 @@ public class CharacterController : MonoBehaviour, ITarget
     {
         Vector3 distance = transform.position - from;
         return distance.x;
+    }
+
+    // PunRPC
+    [PunRPC]
+    private void RpcFlipX(Vector2 direction)
+    {
+        spriteRenderer.flipX = Vector2.right != direction;
+        characterModel.CurrnetDirection = direction;
+    }
+    [PunRPC]
+    private void RpcSetTrigger(string s)
+    {
+        animator.SetTrigger(s);
+    }
+    [PunRPC]
+    private void RpcSetYFreeze(bool freeze)
+    {
+        rb.constraints = freeze
+    ? rb.constraints | RigidbodyConstraints2D.FreezePositionY
+    : rb.constraints & ~RigidbodyConstraints2D.FreezePositionY;
     }
 
     // 애니메이션 이벤트
@@ -221,12 +252,12 @@ public class CharacterController : MonoBehaviour, ITarget
     private void AE_Attack(int combo)
     {
         Vector2 rayPosition = (Vector2)transform.position + Vector2.up;
-        Debug.DrawRay(rayPosition, characterModel.CurrnetDirection * attackDistance, Color.red, 3f);
+        Debug.DrawRay(rayPosition, characterModel.CurrnetDirection * characterModel.AttackDistance, Color.red, 3f);
         int layerMask = 1 << LayerMask.NameToLayer("Enemy");
-        RaycastHit2D hit = Physics2D.Raycast(rayPosition, characterModel.CurrnetDirection, attackDistance, layerMask);
+        RaycastHit2D hit = Physics2D.Raycast(rayPosition, characterModel.CurrnetDirection, characterModel.AttackDistance, layerMask);
         if (hit.collider != null)
         {
-            hit.collider.GetComponent<ITarget>().Damaged(comboDamages[combo]);
+            hit.collider.GetComponent<ITarget>().Damaged(characterModel.ComboDamages[combo]);
         }
     }
 }

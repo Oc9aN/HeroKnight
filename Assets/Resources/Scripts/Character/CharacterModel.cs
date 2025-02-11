@@ -1,4 +1,5 @@
 using System;
+using Photon.Pun;
 using UnityEngine;
 
 public class PlayerSettings
@@ -10,10 +11,26 @@ public class PlayerSettings
     public static readonly float PLAYER_GRAVITY_SLOW = 0.5f;
     public static readonly float PLAYER_GRAVITY_DEFAULT = 2.0f;
 }
-public class CharacterModel
+public class CharacterModel : MonoBehaviourPunCallbacks, IPunObservable
 {
+    [Header("스텟")]
+    [SerializeField] int maxHealth = 100;
+    public int MaxHelath { get => maxHealth; }
+    [SerializeField] float jumpForce = 5f;
+    public float JumpForce { get => jumpForce; }
+    [SerializeField] float rollSpeed = 8f;
+    public float RollSpeed { get => rollSpeed; }
+    [SerializeField] int fullCombo = 3;
+    [SerializeField] float comboThreshold = 1.0f;
+    [SerializeField] float attackDelay = 0.25f;
+    public float AttackDelay { get => attackDelay; }
+    [SerializeField] int[] comboDamages;
+    public int[] ComboDamages { get => comboDamages; }
+    [SerializeField] float attackDistance = 3f;
+    public float AttackDistance { get => attackDistance; }
     public event Action<int> HealthChanged;
-    public event Action StartRolling;
+    public event Action RollingEvent;
+    public event Action<bool> GrabbingChangeEvent;
     private int health;
     public int Health
     {
@@ -34,8 +51,7 @@ public class CharacterModel
         get => rolling; set
         {
             rolling = value;
-            if (rolling)
-                StartRolling?.Invoke();
+            RollingEvent?.Invoke();
         }
     }
 
@@ -45,20 +61,27 @@ public class CharacterModel
     private bool parrying;
     public bool Parrying { get => parrying; set => parrying = value; }
 
-    private bool grabbing;
-    public bool Grabbing { get => grabbing; set => grabbing = value; }
+    private bool grabbing = false;
+    public bool Grabbing
+    {
+        get => grabbing;
+        set
+        {
+            if (value != grabbing)
+                GrabbingChangeEvent?.Invoke(value);
+            grabbing = value;
+        }
+    }
 
     private float attackTimer = 0f;
     public float AttackTimer { get => attackTimer; set => attackTimer = value; }
 
-    private int FullCombo;
-    private float ComboThreshold;
     private int attackCount = 0;    // 현재 공격 단계
     public int AttackCount
     {
         get => attackCount; set
         {
-            if (attackCount > FullCombo || attackTimer > ComboThreshold)
+            if (attackCount > fullCombo || attackTimer > comboThreshold)
                 attackCount = 1;
             else
                 attackCount = value;
@@ -68,10 +91,22 @@ public class CharacterModel
     private Vector2 currnetDirection = Vector2.right;   // 현재 캐릭터 방향
     public Vector2 CurrnetDirection { get => currnetDirection; set => currnetDirection = value; }
 
-    public CharacterModel(int maxHealth, int fullCombo, float comboThreshold)
+    private void Start()
     {
         Health = maxHealth;
-        FullCombo = fullCombo;
-        ComboThreshold = comboThreshold;
+    }
+
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    {
+        if (stream.IsWriting)
+        {
+            stream.SendNext(MoveSpeed);
+            stream.SendNext(Grabbing);
+        }
+        else
+        {
+            MoveSpeed = (float)stream.ReceiveNext();
+            Grabbing = (bool)stream.ReceiveNext();
+        }
     }
 }
