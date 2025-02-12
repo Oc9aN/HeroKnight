@@ -128,6 +128,9 @@ public class BossController : MonoBehaviourPunCallbacks, ITarget
 
         // 모델 이벤트 등록
         bossModel.HealthChanged += bossView.OnHealthChanged;
+        bossModel.SkillEvent += Skill;
+        bossModel.AttackEvent += Attack;
+        bossModel.MoveEvent += Move;
 
         // 각 행동 트리 노드를 초기화
         // 공격 셀렉터
@@ -167,11 +170,7 @@ public class BossController : MonoBehaviourPunCallbacks, ITarget
         if (!bossModel.Attacking && percent < bossModel.SkillChance)
         {
             Debug.Log("보스 스킬 발동");
-            animator.SetBool("Move", false);
-            PV.RPC("RpcSetTrigger", RpcTarget.All, "Cast");
-            SkillOn();
-            bossModel.Attacking = true;
-            bossModel.AttackCoolTime = 0f;
+            bossModel.SkillUsing = true;
             return INode.BTState.SUCCESS;
         }
         return INode.BTState.FAILED;
@@ -184,10 +183,7 @@ public class BossController : MonoBehaviourPunCallbacks, ITarget
         {
             // 가까우면 바로 공격
             Debug.Log("보스 공격!!");
-            animator.SetBool("Move", false);
-            PV.RPC("RpcSetTrigger", RpcTarget.All, "Attack");
             bossModel.Attacking = true;
-            bossModel.AttackCoolTime = 0f;
             return INode.BTState.SUCCESS;
         }
         return INode.BTState.FAILED;
@@ -210,15 +206,6 @@ public class BossController : MonoBehaviourPunCallbacks, ITarget
             return INode.BTState.FAILED;
         Debug.Log("보스 이동중..");
         bossModel.Moving = true;
-        animator.SetBool("Move", bossModel.Moving);
-        Vector2 direction = new Vector2(bossModel.Target.Distance(transform.position), 0f);
-        direction.Normalize();
-        transform.position += (Vector3)direction * bossModel.Speed * Time.deltaTime;
-        if (!Utils.VectorsApproximatelyEqual(bossModel.CurrnetDirection, direction))
-        {
-            // 방향 전환
-            PV.RPC("RpcFlipX", RpcTarget.AllBuffered, direction);
-        }
         return INode.BTState.RUN;
     }
     private INode.BTState IdleAction()
@@ -226,18 +213,20 @@ public class BossController : MonoBehaviourPunCallbacks, ITarget
         // 대기 액션, 공격 딜레이중 또는 일정 확률로 대기
         Debug.Log("보스 대기중..");
         bossModel.Moving = false;
-        animator.SetBool("Move", bossModel.Moving);
-        Vector2 direction = new Vector2(bossModel.Target.Distance(transform.position), 0f);
-        direction.Normalize();
-        if (!Utils.VectorsApproximatelyEqual(bossModel.CurrnetDirection, direction))
-        {
-            // 방향 전환
-            PV.RPC("RpcFlipX", RpcTarget.AllBuffered, direction);
-        }
         return INode.BTState.RUN;
     }
 
-    private void SkillOn()
+    private void Skill(bool isSkill)
+    {
+        if (isSkill)
+        {
+            SkillCreate();
+            animator.SetBool("Move", false);
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Cast");
+            bossModel.AttackCoolTime = 0f;
+        }
+    }
+    private void SkillCreate()
     {
         int count = UnityEngine.Random.Range(bossModel.SkillCountMin, bossModel.SkillCountMax);
         for (int skillCount = 0; skillCount < count; skillCount++)
@@ -249,6 +238,28 @@ public class BossController : MonoBehaviourPunCallbacks, ITarget
             spell.Init(skillPosition, bossModel.SkillDamage);
             spell.AttackEndAction += AE_AttackEnd;
         }
+    }
+    private void Attack(bool isAttack)
+    {
+        if (isAttack)
+        {
+            animator.SetBool("Move", false);
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Attack");
+            bossModel.AttackCoolTime = 0f;
+        }
+    }
+    private void Move(bool isMoving)
+    {
+        animator.SetBool("Move", isMoving);
+        Vector2 direction = new Vector2(bossModel.Target.Distance(transform.position), 0f);
+        direction.Normalize();
+        if (!Utils.VectorsApproximatelyEqual(bossModel.CurrnetDirection, direction))
+        {
+            // 방향 전환
+            PV.RPC("RpcFlipX", RpcTarget.AllBuffered, direction);
+        }
+        if (isMoving)
+            transform.position += (Vector3)direction * bossModel.Speed * Time.deltaTime;
     }
 
     public void Damaged(int damage)

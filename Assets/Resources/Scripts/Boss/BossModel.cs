@@ -40,6 +40,9 @@ public class BossModel : MonoBehaviourPunCallbacks, IPunObservable
     public float SkillSpace { get => skillSpace; }
 
     public event Action<int> HealthChanged;
+    public event Action<bool> SkillEvent;
+    public event Action<bool> AttackEvent;
+    public event Action<bool> MoveEvent;
     private int health;
     public int Health
     {
@@ -51,8 +54,26 @@ public class BossModel : MonoBehaviourPunCallbacks, IPunObservable
         }
     }
 
+    private bool skillUsing = false;
+    public bool SkillUsing
+    {
+        get => skillUsing;
+        set
+        {
+            skillUsing = value;
+            SkillEvent?.Invoke(SkillUsing);
+        }
+    }
     private bool attacking = false;
-    public bool Attacking { get => attacking; set => attacking = value; }
+    public bool Attacking
+    {
+        get => attacking || skillUsing;
+        set
+        {
+            attacking = value;
+            AttackEvent?.Invoke(attacking);
+        }
+    }
 
     private float attackCoolTime = 0f;
     public float AttackCoolTime { get => attackCoolTime; set => attackCoolTime = value; }
@@ -61,7 +82,15 @@ public class BossModel : MonoBehaviourPunCallbacks, IPunObservable
     public Vector2 CurrnetDirection { get => currnetDirection; set => currnetDirection = value; }
 
     private bool moving = false;
-    public bool Moving { get => moving; set => moving = value; }
+    public bool Moving
+    {
+        get => moving;
+        set
+        {
+            moving = value;
+            MoveEvent?.Invoke(moving);
+        }
+    }
 
     private GameObject targetObj = null;
     public GameObject TargetObj
