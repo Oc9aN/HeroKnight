@@ -28,9 +28,13 @@ public class CharacterModel : MonoBehaviourPunCallbacks, IPunObservable
     public int[] ComboDamages { get => comboDamages; }
     [SerializeField] float attackDistance = 3f;
     public float AttackDistance { get => attackDistance; }
+    // Event
     public event Action<int> HealthChanged;
-    public event Action RollingEvent;
+    public event Action<bool> RollingEvent;
     public event Action<bool> GrabbingChangeEvent;
+    public event Action<int> AttackEvent;
+    public event Action<bool> ParryEvent;
+    public event Action<bool> BlockEvent;
     private int health;
     public int Health
     {
@@ -51,15 +55,31 @@ public class CharacterModel : MonoBehaviourPunCallbacks, IPunObservable
         get => rolling; set
         {
             rolling = value;
-            RollingEvent?.Invoke();
+            RollingEvent?.Invoke(rolling);
         }
     }
 
     private bool blocking;
-    public bool Blocking { get => blocking; set => blocking = value; }
+    public bool Blocking
+    {
+        get => blocking;
+        set
+        {
+            blocking = value;
+            BlockEvent?.Invoke(blocking);
+        }
+    }
 
     private bool parrying;
-    public bool Parrying { get => parrying; set => parrying = value; }
+    public bool Parrying
+    {
+        get => parrying;
+        set
+        {
+            parrying = value;
+            ParryEvent?.Invoke(parrying);
+        }
+    }
 
     private bool grabbing = false;
     public bool Grabbing
@@ -79,12 +99,14 @@ public class CharacterModel : MonoBehaviourPunCallbacks, IPunObservable
     private int attackCount = 0;    // 현재 공격 단계
     public int AttackCount
     {
-        get => attackCount; set
+        get => attackCount;
+        set
         {
             if (attackCount > fullCombo || attackTimer > comboThreshold)
                 attackCount = 1;
             else
                 attackCount = value;
+            AttackEvent?.Invoke(attackCount);
         }
     }
 

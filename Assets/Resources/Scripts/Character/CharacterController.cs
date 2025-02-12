@@ -39,24 +39,12 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         characterModel = GetComponent<CharacterModel>();
 
         // 캐릭터 모델 이벤트 등록
-        characterModel.RollingEvent += () =>
-        {
-            if (characterModel.Rolling)
-            {
-                if (RollCoroutine != null)
-                    StopCoroutine(RollCoroutine);
-                RollCoroutine = StartCoroutine(RollUpdate());   // 코루틴으로 구르기 시작
-            }
-        };
-        characterModel.GrabbingChangeEvent += (bool isGrab) =>
-        {
-            if (isGrab)
-            {
-                Debug.Log("그랩");
-                PV.RPC("RpcSetTrigger", RpcTarget.All, "WallGrab");
-                PV.RPC("RpcSetYFreeze", RpcTarget.AllBuffered, true);
-            }
-        };
+        characterModel.RollingEvent += RollStart;
+        characterModel.GrabbingChangeEvent += WallGrab;
+        characterModel.AttackEvent += AttackByCombo;
+        characterModel.ParryEvent += Parry;
+        characterModel.BlockEvent += Block;
+        characterModel.HealthChanged += (_) => Hurt();
 
         // 기본 이동 속도 셋팅
         characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_DEFAULT;
@@ -100,6 +88,16 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         animator.SetBool("WallSlide", (wallSensorR.IsCollided && gripSensorR.IsCollided) || (wallSensorL.IsCollided && gripSensorL.IsCollided));
     }
 
+    private void WallGrab(bool isGrab)
+    {
+        if (isGrab)
+        {
+            Debug.Log("그랩");
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "WallGrab");
+            PV.RPC("RpcSetYFreeze", RpcTarget.AllBuffered, true);
+        }
+    }
+
     /// <summary>
     /// 동작 전 사전 공통 체크사항
     /// </summary>
@@ -117,12 +115,14 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         animator.SetBool("Run", false);
     }
 
+    #region Movement
     public void Move(Vector2 direction)
     {
         if (!ActionPreTest())
             return;
 
-        if (characterModel.Grabbing && direction != characterModel.CurrnetDirection) GrabOff(); // 그랩중 반대 누르면 떨어짐
+        if (characterModel.Grabbing && direction != characterModel.CurrnetDirection)
+            GrabOff(); // 그랩중 반대 누르면 떨어짐
 
         animator.SetBool("Run", true);
         rb.velocity = new Vector2(direction.x * characterModel.MoveSpeed, rb.velocity.y);
@@ -142,19 +142,26 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         rb.AddForce(Vector3.up * characterModel.JumpForce, ForceMode2D.Impulse);
         PV.RPC("RpcSetTrigger", RpcTarget.All, "Jump");
     }
+    #endregion
 
+    #region Attack
     public void Attack()
     {
         if (!ActionPreTest() || characterModel.AttackTimer < characterModel.AttackDelay || !groundSensor.IsCollided || characterModel.Grabbing)  // 여러 조건을 검사하여 공격 (공격 딜레이, 공중 공격 불가, 그랩 중 불가 등)
             return;
 
         characterModel.AttackCount++;
+    }
 
-        PV.RPC("RpcSetTrigger", RpcTarget.All, "Attack" + characterModel.AttackCount);
+    private void AttackByCombo(int combo)
+    {
+        PV.RPC("RpcSetTrigger", RpcTarget.All, "Attack" + combo);
 
         characterModel.AttackTimer = 0.0f;
     }
+    #endregion
 
+    #region Block
     public void BlockOn()
     {
         if (!ActionPreTest() || !groundSensor.IsCollided || characterModel.Grabbing)
@@ -162,24 +169,44 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
 
         rb.velocity = Vector2.zero;
         characterModel.Parrying = true;
-        PV.RPC("RpcSetTrigger", RpcTarget.All, "Parry");      // 패링 애니메이션
         characterModel.Blocking = true;
-        animator.SetBool("Blocking", characterModel.Blocking); // IdelBlock제어
     }
 
     public void BlockOff()
     {
         characterModel.Blocking = false;
-        animator.SetBool("Blocking", characterModel.Blocking); // IdelBlock제어
     }
 
+    public void Parry(bool isParry)
+    {
+        if (isParry)
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Parry");
+    }
+
+    public void Block(bool isBlock)
+    {
+        animator.SetBool("Blocking", isBlock); // IdelBlock제어
+    }
+    #endregion
+
+    #region Roll
     public void Roll()
     {
         if (!ActionPreTest() || !groundSensor.IsCollided)
             return;
 
-        PV.RPC("RpcSetTrigger", RpcTarget.All, "Roll");
         characterModel.Rolling = true;
+    }
+
+    private void RollStart(bool isRolling)
+    {
+        if (isRolling)
+        {
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Roll");
+            if (RollCoroutine != null)
+                StopCoroutine(RollCoroutine);
+            RollCoroutine = StartCoroutine(RollUpdate());   // 코루틴으로 구르기 시작
+        }
     }
 
     public IEnumerator RollUpdate()
@@ -192,7 +219,9 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         characterModel.MoveSpeed = PlayerSettings.PLAYER_SPEED_DEFAULT;
         yield break;
     }
+    #endregion
 
+    #region ETC
     public void GrabOff()
     {
         rb.AddForce(-characterModel.CurrnetDirection * 0.5f, ForceMode2D.Impulse);
@@ -210,11 +239,20 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         rb.gravityScale = PlayerSettings.PLAYER_GRAVITY_DEFAULT;
     }
 
+    private void Hurt()
+    {
+        if (!characterModel.Rolling && !characterModel.Blocking && !characterModel.Grabbing && !characterModel.Parrying)
+        {
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Hurt");
+            AE_SetMoveSpeedDefault();
+        }
+    }
+    #endregion
+
+    #region ITarget
     public void Damaged(int damage)
     {
         characterModel.Health -= damage;
-        if (!characterModel.Rolling && !characterModel.Blocking && !characterModel.Grabbing && !characterModel.Parrying)
-            PV.RPC("RpcSetTrigger", RpcTarget.All, "Hurt");
         Debug.Log($"으악 데미지 {damage}만큼 받았다!");
     }
 
@@ -228,6 +266,7 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
     {
         return PV.ViewID;
     }
+    #endregion
 
     // PunRPC
     [PunRPC]
