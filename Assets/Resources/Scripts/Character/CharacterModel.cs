@@ -100,12 +100,12 @@ public class CharacterModel : MonoBehaviourPunCallbacks, IPunObservable
     {
         if (stream.IsWriting)
         {
-            stream.SendNext(MoveSpeed);
+            //stream.SendNext(MoveSpeed);
             stream.SendNext(Grabbing);
         }
         else
         {
-            MoveSpeed = (float)stream.ReceiveNext();
+            //MoveSpeed = (float)stream.ReceiveNext();
             Grabbing = (bool)stream.ReceiveNext();
         }
     }

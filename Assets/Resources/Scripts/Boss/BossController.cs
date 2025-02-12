@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Photon.Pun;
 using UnityEngine;
 
 public interface INode
@@ -91,56 +92,41 @@ public class SequenceNode : INode
 
 [RequireComponent(typeof(Animator))]
 [RequireComponent(typeof(BoxCollider2D))]
-public class BossController : MonoBehaviour, ITarget
+[RequireComponent(typeof(BossModel))]
+public class BossController : MonoBehaviourPunCallbacks, ITarget
 {
-    [Header("체력")]
-    [SerializeField] int maxHealth = 100;
-    [Header("이동 속도")]
-    [SerializeField] float speed = 2f;
-    [Header("공격 사거리")]
-    [SerializeField] float attackRange = 3f;
-    [Header("추격 최소 거리")]
-    [SerializeField] float traceDistance = 2f;
-    [Header("공격 데미지")]
-    [SerializeField] int defaultDamage = 5;
-    [SerializeField] int skillDamage = 10;
-    [Header("스킬 발동 확률")]
-    [SerializeField] int skillChance = 30;
-    [Header("공격 쿨타임")]
-    [SerializeField] float attackCoolTimeMin = 3f;
-    [SerializeField] float attackCoolTimeMax = 5f;
     [Header("스킬")]
     [SerializeField] BossSpell skill;
-    [Header("스킬 생성 갯수")]
-    [SerializeField] int skillCountMin = 2;
-    [SerializeField] int skillCountMax = 5;
-    [Header("스킬 간격")]
-    [SerializeField] float skillSpace = 3f;
     private SelectorNode rootNode;  // 루트 노드
 
     // MVC
     private BossView bossView;
     private BossModel bossModel;
 
+    private PhotonView PV;
+    private SpriteRenderer spriteRenderer;
     private Animator animator;
-    private ITarget target;         // 타겟
 
-
-    public void SetTarget(ITarget target)
+    public void SetTarget(GameObject target)
     {
-        this.target = target;
+        bossModel.TargetObj = target;
+    }
+
+    private void Awake()
+    {
+        bossModel = GetComponent<BossModel>();
+        PV = GetComponent<PhotonView>();
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        animator = GetComponent<Animator>();
     }
 
     public void Init(BossView view)
     {
-        animator = GetComponent<Animator>();
-
         // 뷰
         bossView = view;
-        bossView.SetMaxHealth(maxHealth);
+        bossView.SetMaxHealth(bossModel.MaxHealth);
 
-        // 모델 생성
-        bossModel = new BossModel(maxHealth);
+        // 모델 이벤트 등록
         bossModel.HealthChanged += bossView.OnHealthChanged;
 
         // 각 행동 트리 노드를 초기화
@@ -163,7 +149,10 @@ public class BossController : MonoBehaviour, ITarget
     // 루트 노드 실행
     private void Update()
     {
-        if (target != null)
+        if (!PhotonNetwork.IsMasterClient)  // 마스터가 아니면 return
+            return;
+
+        if (bossModel.Target != null)
             rootNode.Evaluate();
 
         bossModel.AttackCoolTime += Time.deltaTime;
@@ -171,15 +160,15 @@ public class BossController : MonoBehaviour, ITarget
 
     private INode.BTState SkillAttackAction()
     {
-        if (target == null)
+        if (bossModel.Target == null)
             return INode.BTState.FAILED;
         // 확률적으로 스킬 발동
         int percent = UnityEngine.Random.Range(0, 100);
-        if (!bossModel.Attacking && percent < skillChance)
+        if (!bossModel.Attacking && percent < bossModel.SkillChance)
         {
             Debug.Log("보스 스킬 발동");
             animator.SetBool("Move", false);
-            animator.SetTrigger("Cast");
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Cast");
             SkillOn();
             bossModel.Attacking = true;
             bossModel.AttackCoolTime = 0f;
@@ -189,14 +178,14 @@ public class BossController : MonoBehaviour, ITarget
     }
     private INode.BTState DefaultAttackAction()
     {
-        if (target == null)
+        if (bossModel.Target == null)
             return INode.BTState.FAILED;
-        if (!bossModel.Attacking && Mathf.Abs(target.Distance(transform.position)) < attackRange)
+        if (!bossModel.Attacking && Mathf.Abs(bossModel.Target.Distance(transform.position)) < bossModel.AttackRange)
         {
             // 가까우면 바로 공격
             Debug.Log("보스 공격!!");
             animator.SetBool("Move", false);
-            animator.SetTrigger("Attack");
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Attack");
             bossModel.Attacking = true;
             bossModel.AttackCoolTime = 0f;
             return INode.BTState.SUCCESS;
@@ -210,25 +199,25 @@ public class BossController : MonoBehaviour, ITarget
             Debug.Log("보스 공격중..");
             return INode.BTState.RUN;
         }
-        float randomCoolTime = UnityEngine.Random.Range(attackCoolTimeMin, attackCoolTimeMax);
+        float randomCoolTime = UnityEngine.Random.Range(bossModel.AttackCoolTimeMin, bossModel.AttackCoolTimeMax);
         if (bossModel.AttackCoolTime < randomCoolTime)
             return INode.BTState.FAILED;
         return INode.BTState.SUCCESS;
     }
     private INode.BTState TraceAction()
     {
-        if (target == null || Mathf.Abs(target.Distance(transform.position)) < traceDistance || bossModel.Attacking)   // 추적 거리보다 가까워지면 종료
+        if (bossModel.Target == null || Mathf.Abs(bossModel.Target.Distance(transform.position)) < bossModel.TraceDistance || bossModel.Attacking)   // 추적 거리보다 가까워지면 종료
             return INode.BTState.FAILED;
         Debug.Log("보스 이동중..");
         bossModel.Moving = true;
         animator.SetBool("Move", bossModel.Moving);
-        Vector3 direction = new Vector3(target.Distance(transform.position), 0f, 0f);
+        Vector2 direction = new Vector2(bossModel.Target.Distance(transform.position), 0f);
         direction.Normalize();
-        transform.position += direction * speed * Time.deltaTime;
+        transform.position += (Vector3)direction * bossModel.Speed * Time.deltaTime;
         if (!Utils.VectorsApproximatelyEqual(bossModel.CurrnetDirection, direction))
         {
             // 방향 전환
-            ChangeDirection(direction);
+            PV.RPC("RpcFlipX", RpcTarget.AllBuffered, direction);
         }
         return INode.BTState.RUN;
     }
@@ -238,34 +227,26 @@ public class BossController : MonoBehaviour, ITarget
         Debug.Log("보스 대기중..");
         bossModel.Moving = false;
         animator.SetBool("Move", bossModel.Moving);
-        Vector3 direction = new Vector3(target.Distance(transform.position), 0f, 0f);
+        Vector2 direction = new Vector2(bossModel.Target.Distance(transform.position), 0f);
         direction.Normalize();
         if (!Utils.VectorsApproximatelyEqual(bossModel.CurrnetDirection, direction))
         {
             // 방향 전환
-            ChangeDirection(direction);
+            PV.RPC("RpcFlipX", RpcTarget.AllBuffered, direction);
         }
         return INode.BTState.RUN;
     }
 
-    private void ChangeDirection(Vector3 direction)
-    {
-        Vector3 newScale = transform.localScale;
-        newScale.x = -newScale.x;
-        transform.localScale = newScale;
-        bossModel.CurrnetDirection = direction;
-    }
-
     private void SkillOn()
     {
-        int count = UnityEngine.Random.Range(skillCountMin, skillCountMax);
+        int count = UnityEngine.Random.Range(bossModel.SkillCountMin, bossModel.SkillCountMax);
         for (int skillCount = 0; skillCount < count; skillCount++)
         {
-            float xPosition = transform.position.x + target.Distance(transform.position);
-            xPosition += skillSpace * skillCount * Mathf.Sign(target.Distance(transform.position));
+            float xPosition = transform.position.x + bossModel.Target.Distance(transform.position);
+            xPosition += bossModel.SkillSpace * skillCount * Mathf.Sign(bossModel.Target.Distance(transform.position));
             Vector2 skillPosition = new Vector2(xPosition, transform.position.y);
             BossSpell spell = Instantiate(skill);
-            spell.Init(skillPosition, skillDamage);
+            spell.Init(skillPosition, bossModel.SkillDamage);
             spell.AttackEndAction += AE_AttackEnd;
         }
     }
@@ -275,7 +256,7 @@ public class BossController : MonoBehaviour, ITarget
         Debug.Log($"뽀스 데미지 {damage}만큼 받았다!");
         bossModel.Health -= damage;
         if (!bossModel.Moving && !bossModel.Attacking)
-            animator.SetTrigger("Hurt");
+            PV.RPC("RpcSetTrigger", RpcTarget.All, "Hurt");
     }
 
     public float Distance(Vector3 from)
@@ -284,11 +265,29 @@ public class BossController : MonoBehaviour, ITarget
         return distance.x;
     }
 
+    // PunRPC
+    [PunRPC]
+    private void RpcFlipX(Vector2 direction)
+    {
+        spriteRenderer.flipX = Vector2.left != direction;
+        bossModel.CurrnetDirection = direction;
+    }
+    [PunRPC]
+    private void RpcSetTrigger(string s)
+    {
+        animator.SetTrigger(s);
+    }
+
     private void AE_AttackEnd() => bossModel.Attacking = false;
     private void AE_AttackDefault()
     {
-        if (Utils.FloatSignEqual(target.Distance(transform.position), bossModel.CurrnetDirection.x)
-        && Mathf.Abs(target.Distance(transform.position)) < attackRange)   // 데미지 줄때 방향과 사거리 체크
-            target.Damaged(defaultDamage);
+        if (Utils.FloatSignEqual(bossModel.Target.Distance(transform.position), bossModel.CurrnetDirection.x)
+        && Mathf.Abs(bossModel.Target.Distance(transform.position)) < bossModel.AttackRange)   // 데미지 줄때 방향과 사거리 체크
+            bossModel.Target.Damaged(bossModel.DefaultDamage);
+    }
+
+    public int GetTargetViewId()
+    {
+        throw new NotImplementedException();
     }
 }

@@ -40,8 +40,11 @@ public class GameController : MonoBehaviourPunCallbacks
         PhotonNetwork.Instantiate("Prefabs/HeroKnight", spawnPoint.position, Quaternion.identity).TryGetComponent<CharacterController>(out CharacterController characterController);
         characterController.Init(characterView);
 
-        // PhotonNetwork.Instantiate("Prefabs/Bringer-of-Death", bossSpawnPoint.position, Quaternion.identity).TryGetComponent<BossController>(out BossController bossController);
-        // bossController.Init(bossView);
-        // bossController.SetTarget(characterController);
+        if (PhotonNetwork.IsMasterClient)
+        {
+            PhotonNetwork.Instantiate("Prefabs/Bringer-of-Death", bossSpawnPoint.position, Quaternion.identity).TryGetComponent<BossController>(out BossController bossController);
+            bossController.Init(bossView);
+            bossController.SetTarget(characterController.gameObject);
+        }
     }
 }

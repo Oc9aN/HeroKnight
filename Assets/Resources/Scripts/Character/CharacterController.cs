@@ -224,6 +224,11 @@ public class CharacterController : MonoBehaviourPunCallbacks, ITarget
         return distance.x;
     }
 
+    public int GetTargetViewId()
+    {
+        return PV.ViewID;
+    }
+
     // PunRPC
     [PunRPC]
     private void RpcFlipX(Vector2 direction)

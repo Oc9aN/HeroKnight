@@ -1,9 +1,44 @@
 
 using System;
+using Photon.Pun;
 using UnityEngine;
 
-public class BossModel
+public class BossModel : MonoBehaviourPunCallbacks, IPunObservable
 {
+    [Header("체력")]
+    [SerializeField] int maxHealth = 100;
+    public int MaxHealth { get => maxHealth; }
+    [Header("이동 속도")]
+    [SerializeField] float speed = 2f;
+    public float Speed { get => speed; }
+    [Header("공격 사거리")]
+    [SerializeField] float attackRange = 3f;
+    public float AttackRange { get => attackRange; }
+    [Header("추격 최소 거리")]
+    [SerializeField] float traceDistance = 2f;
+    public float TraceDistance { get => traceDistance; }
+    [Header("공격 데미지")]
+    [SerializeField] int defaultDamage = 5;
+    public int DefaultDamage { get => defaultDamage; }
+    [SerializeField] int skillDamage = 10;
+    public int SkillDamage { get => skillDamage; }
+    [Header("스킬 발동 확률")]
+    [SerializeField] int skillChance = 30;
+    public int SkillChance { get => skillChance; }
+    [Header("공격 쿨타임")]
+    [SerializeField] float attackCoolTimeMin = 3f;
+    public float AttackCoolTimeMin { get => attackCoolTimeMin; }
+    [SerializeField] float attackCoolTimeMax = 5f;
+    public float AttackCoolTimeMax { get => attackCoolTimeMax; }
+    [Header("스킬 생성 갯수")]
+    [SerializeField] int skillCountMin = 2;
+    public int SkillCountMin { get => skillCountMin; }
+    [SerializeField] int skillCountMax = 5;
+    public int SkillCountMax { get => skillCountMax; }
+    [Header("스킬 간격")]
+    [SerializeField] float skillSpace = 3f;
+    public float SkillSpace { get => skillSpace; }
+
     public event Action<int> HealthChanged;
     private int health;
     public int Health
@@ -28,8 +63,52 @@ public class BossModel
     private bool moving = false;
     public bool Moving { get => moving; set => moving = value; }
 
+    private GameObject targetObj = null;
+    public GameObject TargetObj
+    {
+        set
+        {
+            if (targetObj != value)
+                target = value.GetComponent<ITarget>();
+            targetObj = value;
+        }
+    }
+    private ITarget target;
+    public ITarget Target
+    {
+        get
+        {
+            if (target == null)
+                target = targetObj?.GetComponent<ITarget>();
+            return target;
+        }
+    }
+
     public BossModel(int maxHealth)
     {
         Health = maxHealth;
+    }
+
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    {
+        if (stream.IsWriting)
+        {
+            stream.SendNext(Attacking);
+            stream.SendNext(AttackCoolTime);
+            stream.SendNext(Moving);
+            stream.SendNext(Target.GetTargetViewId());
+        }
+        else
+        {
+            Attacking = (bool)stream.ReceiveNext();
+            AttackCoolTime = (float)stream.ReceiveNext();
+            Moving = (bool)stream.ReceiveNext();
+            int targetViewID = (int)stream.ReceiveNext();
+            PhotonView targetView = PhotonView.Find(targetViewID);
+            if (targetView != null)
+            {
+                TargetObj = targetView.gameObject;
+            }
+        }
     }
 }
