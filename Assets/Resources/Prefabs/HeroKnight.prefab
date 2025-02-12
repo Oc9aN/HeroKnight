@@ -307,6 +307,7 @@ GameObject:
   - component: {fileID: 2773380615966044362}
   - component: {fileID: -1705740475333081175}
   - component: {fileID: -3477608371662316580}
+  - component: {fileID: 6941494701758882791}
   m_Layer: 6
   m_Name: HeroKnight
   m_TagString: Player
@@ -477,6 +478,7 @@ MonoBehaviour:
   - {fileID: -2293051576187182472}
   - {fileID: 7304193473990644836}
   - {fileID: -3477608371662316580}
+  - {fileID: 6941494701758882791}
   sceneViewId: 0
   InstantiationId: 0
   isRuntimeInstantiated: 0
@@ -607,6 +609,22 @@ MonoBehaviour:
   attackDelay: 0.25
   comboDamages: 050000000a0000000f000000
   attackDistance: 3
+--- !u!114 &6941494701758882791
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2773380615966044359}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e7cb724808c322458aa4d15f5035fa9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_SynchronizeVelocity: 1
+  m_SynchronizeAngularVelocity: 0
+  m_TeleportEnabled: 0
+  m_TeleportIfDistanceGreaterThan: 3
 --- !u!1 &2773380616151007662
 GameObject:
   m_ObjectHideFlags: 0

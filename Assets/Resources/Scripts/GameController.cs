@@ -20,6 +20,9 @@ public class GameController : MonoBehaviourPunCallbacks
     void Start()
     {
         Screen.SetResolution(960, 540, false);
+        Application.targetFrameRate = 60;
+        PhotonNetwork.SendRate = 60;
+        PhotonNetwork.SerializationRate = 30;
         PhotonNetwork.ConnectUsingSettings();
     }
 
